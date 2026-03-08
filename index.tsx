@@ -13,12 +13,15 @@ import './visual-3d';
 @customElement('gdm-live-audio')
 export class GdmLiveAudio extends LitElement {
   @state() isRecording = false;
+  @state() isSessionReady = false;
   @state() status = '';
   @state() error = '';
   @state() currentShape = 'sphere';
+  @state() apiKey = '';
 
   private client: GoogleGenAI;
   private session: Session;
+  private readonly storageKey = 'gemini-api-key';
   private inputAudioContext = new (window.AudioContext ||
     (window as any).webkitAudioContext)({sampleRate: 16000});
   private outputAudioContext = new (window.AudioContext ||
@@ -90,11 +93,77 @@ export class GdmLiveAudio extends LitElement {
         cursor: not-allowed;
       }
     }
+
+    .setup-panel {
+      position: absolute;
+      top: 5vh;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      width: min(520px, calc(100vw - 32px));
+      padding: 16px;
+      border: 1px solid rgba(0, 170, 255, 0.25);
+      border-radius: 16px;
+      background: rgba(2, 12, 24, 0.8);
+      color: #d7f4ff;
+      box-shadow: 0 0 24px rgba(0, 170, 255, 0.15);
+      backdrop-filter: blur(10px);
+    }
+
+    .setup-panel h1 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+    }
+
+    .setup-panel p {
+      margin: 0 0 12px;
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
+
+    .setup-panel form {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .setup-panel input {
+      flex: 1 1 260px;
+      min-width: 0;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 170, 255, 0.3);
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      color: inherit;
+      font: inherit;
+    }
+
+    .setup-panel button {
+      border-radius: 10px;
+      border: 1px solid rgba(0, 170, 255, 0.3);
+      padding: 12px 16px;
+      background: rgba(0, 170, 255, 0.1);
+      color: #00aaff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .setup-panel small {
+      display: block;
+      margin-top: 10px;
+      opacity: 0.8;
+    }
   `;
 
   constructor() {
     super();
-    this.initClient();
+    this.apiKey =
+      localStorage.getItem(this.storageKey) ?? process.env.GEMINI_API_KEY ?? '';
+    if (this.apiKey) {
+      this.initClient();
+    } else {
+      this.updateStatus('Enter a Gemini API key to start the live audio assistant.');
+    }
   }
 
   private initAudio() {
@@ -102,15 +171,22 @@ export class GdmLiveAudio extends LitElement {
   }
 
   private async initClient() {
+    if (!this.apiKey) {
+      this.updateError('A Gemini API key is required to start the assistant.');
+      return;
+    }
+
     this.initAudio();
+    this.error = '';
+    this.isSessionReady = false;
 
     this.client = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: this.apiKey,
     });
 
     this.outputNode.connect(this.outputAudioContext.destination);
 
-    this.initSession();
+    await this.initSession();
   }
 
   private async initSession() {
@@ -121,6 +197,7 @@ export class GdmLiveAudio extends LitElement {
         model: model,
         callbacks: {
           onopen: () => {
+            this.isSessionReady = true;
             this.updateStatus('Opened');
           },
           onmessage: async (message: LiveServerMessage) => {
@@ -172,9 +249,11 @@ export class GdmLiveAudio extends LitElement {
             }
           },
           onerror: (e: ErrorEvent) => {
+            this.isSessionReady = false;
             this.updateError(e.message);
           },
           onclose: (e: CloseEvent) => {
+            this.isSessionReady = false;
             this.updateStatus('Close:' + e.reason);
           },
         },
@@ -191,6 +270,12 @@ export class GdmLiveAudio extends LitElement {
       });
     } catch (e) {
       console.error(e);
+      this.isSessionReady = false;
+      this.updateError(
+        e instanceof Error
+          ? e.message
+          : 'Unable to initialize the Gemini live session.',
+      );
     }
   }
 
@@ -216,6 +301,21 @@ export class GdmLiveAudio extends LitElement {
     } else if (text.includes('cylinder') || text.includes('tube') || text.includes('pipe') || text.includes('pillar') || text.includes('column')) {
       this.currentShape = 'cylinder';
     }
+  }
+
+  private async saveApiKey(event: Event) {
+    event.preventDefault();
+    const value = this.apiKey.trim();
+
+    if (!value) {
+      this.updateError('Please enter a Gemini API key.');
+      return;
+    }
+
+    localStorage.setItem(this.storageKey, value);
+    this.apiKey = value;
+    this.updateStatus('API key saved. Connecting to Gemini...');
+    await this.initClient();
   }
 
   private async startRecording() {
@@ -305,7 +405,7 @@ export class GdmLiveAudio extends LitElement {
           <button
             id="resetButton"
             @click=${this.reset}
-            ?disabled=${this.isRecording}>
+            ?disabled=${this.isRecording || !this.apiKey || !this.isSessionReady}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               height="32px"
@@ -318,7 +418,7 @@ export class GdmLiveAudio extends LitElement {
           <button
             id="startButton"
             @click=${this.startRecording}
-            ?disabled=${this.isRecording}>
+            ?disabled=${this.isRecording || !this.apiKey || !this.isSessionReady}>
             <svg
               viewBox="0 0 100 100"
               width="24px"
@@ -342,8 +442,33 @@ export class GdmLiveAudio extends LitElement {
           </button>
         </div>
 
+        ${this.apiKey
+          ? null
+          : html`<div class="setup-panel">
+              <h1>Connect your Gemini API key</h1>
+              <p>
+                This GitHub Pages frontend runs entirely in your browser. Enter
+                your Gemini API key once and it will be stored locally in this
+                browser so the live audio assistant can connect.
+              </p>
+              <form @submit=${this.saveApiKey}>
+                <input
+                  type="password"
+                  .value=${this.apiKey}
+                  @input=${(event: Event) => {
+                    this.apiKey = (event.target as HTMLInputElement).value;
+                  }}
+                  placeholder="Paste Gemini API key" />
+                <button type="submit">Save key</button>
+              </form>
+              <small>
+                Tip: for local development you can still use
+                <code>GEMINI_API_KEY</code> in <code>.env.local</code>.
+              </small>
+            </div>`}
+
         <div id="status"> 
-          ${this.error}
+          ${this.error || this.status}
           <div style="font-size: 10px; opacity: 0.7; margin-top: 8px; letter-spacing: 4px;">
             FORM_ID: ${this.currentShape.toUpperCase()}
           </div>

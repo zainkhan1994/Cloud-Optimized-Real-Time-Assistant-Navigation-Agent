@@ -1,10 +1,12 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 
+const repoName = 'Cloud-Optimized-Real-Time-Assistant-Navigation-Agent';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
+      base: mode === 'production' ? `/${repoName}/` : '/',
       server: {
         port: 3000,
         host: '0.0.0.0',
