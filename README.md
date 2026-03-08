@@ -8,6 +8,17 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/6f23f979-e744-4437-ad6c-f2d31cb17432
 
+## GitHub Pages frontend
+
+This repository now deploys its Vite frontend to GitHub Pages from the `main`
+branch. Once the GitHub Pages workflow completes, the site is served from:
+
+`https://zainkhan1994.github.io/Cloud-Optimized-Real-Time-Assistant-Navigation-Agent/`
+
+Because GitHub Pages is a static host, the deployed frontend asks for a Gemini
+API key at runtime and stores it in the browser's local storage. That keeps the
+site usable without embedding secrets in the repository or workflow.
+
 ## Run Locally
 
 **Prerequisites:**  Node.js
